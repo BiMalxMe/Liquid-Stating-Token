@@ -1,44 +1,45 @@
-require("dotenv").config();
-console.log(process.env.PUBLIC_KEY);
-import express from "express";
+import dotenv from "dotenv";
+import express, { Request, Response } from "express";
 import { mintTokens } from "./mintTokens";
 
+dotenv.config();
 const app = express();
 
+// Middleware to parse JSON bodies
+app.use(express.json());
+
+const VAULT = "AjmTvNjtzX4L67jXQYyXQv4B2khBVo8okSvJzP2UecLW";
 const HELIUS_RESPONSE = {
   nativeTransfers: [
     {
       amount: 900000000,
-      fromUserAccount: "5nSxdM8kzfoncH6ryjR1BsfPCMWnGsvDQbnb1gownRzb",
-      toUserAccount: "AjmTvNjtzX4L67jXQYyXQv4B2khBVo8okSvJzP2UecLW",
+      fromUserAccount: "2iveeevEF3kZ9HYi3m5moT3RQZXnbjNF1MeLfXggjpBy",
+      toUserAccount: VAULT,
     },
   ],
 };
 
-const VAULT = "AjmTvNjtzX4L67jXQYyXQv4B2khBVo8okSvJzP2UecLW";
+app.post("/helius", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const incomingTx = HELIUS_RESPONSE.nativeTransfers.find(
+      (x) => x.toUserAccount === VAULT
+    );
+    
+    if (!incomingTx) {
+      res.status(200).json({ message: "no matching transaction found" });
+      return;
+    }
 
-app.post("/helius", async (req, res) => {
-  const incomingTx = HELIUS_RESPONSE.nativeTransfers.find(
-    (x) => x.toUserAccount === VAULT
-  );
-  if (!incomingTx) {
-    res.json({ message: "processed" });
-    return;
+    const fromAddress = incomingTx.fromUserAccount;
+    const amount = incomingTx.amount;
+
+    await mintTokens(fromAddress, amount / 1e9); // Convert lamports to SOL
+
+    res.status(200).json({ message: "Transaction successful" });
+  } catch (error) {
+    console.error("Error processing transaction:", error);
+    res.status(500).json({ message: "Transaction failed" });
   }
-  const fromAddress = incomingTx.fromUserAccount;
-  const toAddress = VAULT;
-  const amount = incomingTx.amount;
-  const type = "received_native_sol";
-  await mintTokens(fromAddress, amount);
-
-  // if (type === "received_native_sol") {
-  // } else {
-  //     // What could go wrong here?
-  //     await burnTokens(fromAddress, toAddress, amount);
-  //     await sendNativeTokens(fromAddress, toAddress, amount);
-  // }
-
-  res.send("Transaction successful");
 });
 
 app.listen(3000, () => {

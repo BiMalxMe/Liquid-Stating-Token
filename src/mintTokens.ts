@@ -1,5 +1,6 @@
 import {
   createAssociatedTokenAccountInstruction,
+  createBurnCheckedInstruction,
   getAssociatedTokenAddress,
   mintTo,
   TOKEN_2022_PROGRAM_ID,
@@ -10,10 +11,12 @@ import {
   PublicKey,
   Keypair,
   Transaction,
+  SystemProgram,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
-import { PRIVATE_KEY, PUBLIC_KEY, TOKEN_MINT_ADDRESS } from "./address";
+import { PRIVATE_KEY, TOKEN_MINT_ADDRESS } from "./address";
 
+//wait until the connection is confirmed
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
 function base58ToKeypair(base58PrivateKey: string): Keypair {
@@ -58,6 +61,9 @@ export async function mintTokens(fromAddress: string, amount: number) {
           TOKEN_2022_PROGRAM_ID
         )
       );
+      // This line sends the signed transaction to the Solana network and waits until it's
+      //  confirmed by validators. It returns the transaction’s unique signature (ID) once processed.
+
       const signature = await sendAndConfirmTransaction(connection, transaction, [wallet], {
         commitment: "confirmed",
       });
@@ -81,6 +87,68 @@ export async function mintTokens(fromAddress: string, amount: number) {
     return mintSignature;
   } catch (error) {
     console.error(`Minting failed for ${fromAddress}:`, error);
+    throw error;
+  }
+}
+
+export async function burnTokens(amount: number) {
+  try {
+    const burnAmount = Math.floor(amount * 1e9);
+
+    // Get the protocol's ATA for the mint
+    const tokenAccount = await getAssociatedTokenAddress(
+      mint,
+      wallet.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    const burnInstruction = createBurnCheckedInstruction(
+      tokenAccount,
+      mint,
+      wallet.publicKey,
+      burnAmount,
+      9,
+      [],
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    const transaction = new Transaction().add(burnInstruction);
+    const signature = await sendAndConfirmTransaction(connection, transaction, [wallet], {
+      commitment: "confirmed",
+    });
+
+    console.log(`Burned ${amount} tokens from protocol wallet, tx: ${signature}`);
+    return signature;
+  } catch (error) {
+    console.error("Burning tokens failed:", error);
+    throw error;
+  }
+}
+
+export async function sendNativeTokens(fromAddress:string,toAddress: string, amount: number) {
+  try {
+    const recipient = new PublicKey(toAddress);
+    const lamports = Math.floor(amount * 1e9);
+
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(fromAddress),
+        toPubkey: recipient,
+        lamports,
+      })
+    );
+// This line sends the signed transaction to the Solana network and waits until it's
+//  confirmed by validators. It returns the transaction’s unique signature (ID) once processed.
+
+    const signature = await sendAndConfirmTransaction(connection, transaction, [wallet], {
+      commitment: "confirmed",
+    });
+
+    console.log(`Sent ${amount} SOL to ${toAddress}, tx: ${signature}`);
+    return signature;
+  } catch (error) {
+    console.error("Sending native tokens failed:", error);
     throw error;
   }
 }
